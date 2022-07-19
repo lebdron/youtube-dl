@@ -20,23 +20,23 @@ class PanoptoBaseIE(InfoExtractor):
     """The base class with common methods for Panopto extractors."""
 
     @classmethod
-    def _match_organization(cls, url):
-        """Match and return the organization part of a Panopto hosted URL."""
+    def _match_host(cls, url):
+        """Match and return the host part of a Panopto hosted URL."""
         if '_VALID_URL_RE' not in cls.__dict__:
             cls._VALID_URL_RE = re.compile(cls._VALID_URL)
         m = cls._VALID_URL_RE.match(url)
         assert m
-        return compat_str(m.group('org'))
+        return compat_str(m.group('host'))
 
 
 class PanoptoIE(PanoptoBaseIE):
     """Extracts a single Panopto video including all available streams."""
 
-    _VALID_URL = r'^https?://(?P<org>[a-z0-9]+)\.hosted\.panopto.com/Panopto/Pages/Viewer\.aspx\?id=(?P<id>[a-f0-9-]+)'
+    _VALID_URL = r'^https?://(?P<host>[a-z0-9]+\.(?:hosted\.panopto\.com|cloud\.panopto\.eu))/Panopto/Pages/Viewer\.aspx\?id=(?P<id>[a-f0-9-]+)'
     _TESTS = [
         {
             'url': 'https://demo.hosted.panopto.com/Panopto/Pages/Viewer.aspx?id=26b3ae9e-4a48-4dcc-96ba-0befba08a0fb',
-            'md5': 'e8e6ef6b0572dd5985f5f8c3e096f717',
+            'md5': '5cd2dc25c43870230cec2fc220ba53eb',
             'info_dict': {
                 'id': '26b3ae9e-4a48-4dcc-96ba-0befba08a0fb',
                 'ext': 'mp4',
@@ -56,7 +56,7 @@ class PanoptoIE(PanoptoBaseIE):
             },
             'playlist': [
                 {
-                    'md5': 'e22b5a284789ba2681e4fe215352d816',
+                    'md5': 'b39d11f05157bc08f16c774a738e8efd',
                     'info_dict': {
                         'id': '15ad06ef-3f7d-4074-aa4a-87c41dd18f9c',
                         'ext': 'mp4',
@@ -64,7 +64,7 @@ class PanoptoIE(PanoptoBaseIE):
                     },
                 },
                 {
-                    'md5': 'a483b8116abbb04a7112a9a3ccc835ce',
+                    'md5': '21ef910a0d397e825f5ade7c0c8b9cfe',
                     'info_dict': {
                         'id': '7668d6b2-dc81-421d-9853-20653689e2e8',
                         'ext': 'mp4',
@@ -89,10 +89,10 @@ class PanoptoIE(PanoptoBaseIE):
     def _real_extract(self, url):
         """Extracts the video and stream information for the given Panopto hosted URL."""
         video_id = self._match_id(url)
-        org = self._match_organization(url)
+        host = self._match_host(url)
 
         delivery_info = self._download_json(
-            'https://{0}.hosted.panopto.com/Panopto/Pages/Viewer/DeliveryInfo.aspx'.format(org),
+            'https://{0}/Panopto/Pages/Viewer/DeliveryInfo.aspx'.format(host),
             video_id,
             query={
                 'deliveryId': video_id,
@@ -123,7 +123,7 @@ class PanoptoIE(PanoptoBaseIE):
                 'title': this_stream['Tag'],
                 'formats': [],
             }
-            if 'StreamHttpUrl' in this_stream:
+            if 'StreamHttpUrl' in this_stream and this_stream['StreamHttpUrl'] is not None:
                 new_stream['formats'].append({
                     'url': this_stream['StreamHttpUrl'],
                 })
@@ -140,8 +140,8 @@ class PanoptoIE(PanoptoBaseIE):
         result = {
             'id': video_id,
             'title': delivery_info['Delivery']['SessionName'],
-            'thumbnail': 'https://{0}.hosted.panopto.com/Panopto/Services/FrameGrabber.svc/FrameRedirect?objectId={1}&mode=Delivery&random={2}'.format(
-                         org, video_id, random()),
+            'thumbnail': 'https://{0}/Panopto/Services/FrameGrabber.svc/FrameRedirect?objectId={1}&mode=Delivery&random={2}'.format(
+                         host, video_id, random()),
         }
 
         if len(streams) == 1:
@@ -170,8 +170,8 @@ class PanoptoIE(PanoptoBaseIE):
                 object_sequence_num = timestamp.get('ObjectSequenceNumber')
                 if object_id is not None and object_sequence_num is not None:
                     thumbnails.append({
-                        'url': 'https://{0}.hosted.panopto.com/Panopto/Pages/Viewer/Image.aspx?id={1}&number={2}&x=undefined'.format(
-                               org, object_id, object_sequence_num)
+                        'url': 'https://{0}/Panopto/Pages/Viewer/Image.aspx?id={1}&number={2}&x=undefined'.format(
+                               host, object_id, object_sequence_num)
                     })
 
                 # This provides actual thumbnails instead of the above which allows for downloading of real slides
@@ -180,8 +180,8 @@ class PanoptoIE(PanoptoBaseIE):
                 # absolute_time = timestamp.get('AbsoluteTime')
                 # if object_public_id is not None and session_id is not None and object_sequence_num is not None and absolute_time is not None:
                 #     thumbnails.append({
-                #         'url': 'https://{0}.hosted.panopto.com/Panopto/Pages/Viewer/Thumb.aspx?eventTargetPID={1}&sessionPID={2}&number={3}&isPrimary=false&absoluteTime={4}'.format(
-                #             org, object_public_id, session_id, object_sequence_num, absolute_time),
+                #         'url': 'https://{0}/Panopto/Pages/Viewer/Thumb.aspx?eventTargetPID={1}&sessionPID={2}&number={3}&isPrimary=false&absoluteTime={4}'.format(
+                #             host, object_public_id, session_id, object_sequence_num, absolute_time),
                 #     })
 
         if len(thumbnails):
@@ -196,7 +196,7 @@ class PanoptoIE(PanoptoBaseIE):
 class PanoptoFolderIE(PanoptoBaseIE):
     """Recursively extracts a folder of Panopto videos, digging as far as possible into subfolders."""
 
-    _VALID_URL = r'^https?://(?P<org>[a-z0-9]+)\.hosted\.panopto.com/Panopto/Pages/Sessions/List\.aspx(?:\?.*)?#(?:.*&)?folderID=(?:"|%22)(?P<id>[a-f0-9-]+)'
+    _VALID_URL = r'^https?://(?P<host>[a-z0-9]+\.(?:hosted\.panopto\.com|cloud\.panopto\.eu))/Panopto/Pages/Sessions/List\.aspx(?:\?.*)?#(?:.*&)?folderID=(?:"|%22)(?P<id>[a-f0-9-]+)'
     _TESTS = [
         {
             'url': 'https://demo.hosted.panopto.com/Panopto/Pages/Sessions/List.aspx#folderID=%224540f269-8bb1-4352-b5dc-64e5919d1c40%22',
@@ -214,10 +214,10 @@ class PanoptoFolderIE(PanoptoBaseIE):
         if smuggled is None:
             smuggled = {}
         folder_id = self._match_id(url)
-        org = self._match_organization(url)
+        host = self._match_host(url)
 
         folder_data = self._download_json(
-            'https://{0}.hosted.panopto.com/Panopto/Services/Data.svc/GetSessions'.format(org),
+            'https://{0}/Panopto/Services/Data.svc/GetSessions'.format(host),
             folder_id,
             'Downloading folder listing',
             'Failed to download folder listing',
@@ -262,8 +262,8 @@ class PanoptoFolderIE(PanoptoBaseIE):
                 }
                 if 'prev_folders' in smuggled:
                     new_folder['title'] = smuggled['prev_folders'] + ' -- ' + new_folder['title']
-                new_folder['url'] = smuggle_url('https://{0}.hosted.panopto.com/Panopto/Pages/Sessions/List.aspx#folderID="{1}"'
-                                                .format(org, subfolder['ID']), {'prev_folders': new_folder['title']})
+                new_folder['url'] = smuggle_url('https://{0}/Panopto/Pages/Sessions/List.aspx#folderID="{1}"'
+                                                .format(host, subfolder['ID']), {'prev_folders': new_folder['title']})
                 entries.append(new_folder)
 
         if not entries:
